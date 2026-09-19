@@ -18,10 +18,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
       
-      - name: Create Android Project Structure
+      - name: Create Project
         run: |
           mkdir -p app/src/main/java/com/zahra/vpsmonitor
           
@@ -64,13 +64,10 @@ jobs:
           }
           JAVA
       
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      
-      - name: Build with Gradle
+      - name: Build APK
         run: |
           # Create root build.gradle
-          cat > build.gradle << 'GRADLE'
+          cat > build.gradle << 'ROOTGRADLE'
           buildscript {
               repositories {
                   google()
@@ -80,7 +77,7 @@ jobs:
                   classpath 'com.android.tools.build:gradle:8.2.0'
               }
           }
-          GRADLE
+          ROOTGRADLE
           
           # Create app/build.gradle
           cat > app/build.gradle << 'APPGRADLE'
@@ -96,12 +93,6 @@ jobs:
                   targetSdk 34
                   versionCode 1
                   versionName "1.0"
-              }
-              
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                  }
               }
           }
           APPGRADLE
@@ -126,19 +117,13 @@ jobs:
           include ':app'
           SETTINGS
           
-          # Create gradle.properties
-          cat > gradle.properties << 'PROPS'
-          android.useAndroidX=false
-          org.gradle.jvmargs=-Xmx2048m
-          PROPS
-          
-          # Create gradle wrapper
-          gradle wrapper --gradle-version 8.2
+          # Setup local properties with SDK path
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           
           # Build
-          ./gradlew assembleDebug
+          gradle assembleDebug
       
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: vps-monitor-apk
