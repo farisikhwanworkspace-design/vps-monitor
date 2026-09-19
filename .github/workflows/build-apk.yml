@@ -12,17 +12,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up JDK 17
+      - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '11'
           distribution: 'temurin'
       
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      
-      - name: Create Android project
+      - name: Build simple APK
         run: |
+          # Install Android SDK command line tools
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y wget unzip
+          
+          # Download command line tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          
+          # Setup SDK
+          export ANDROID_HOME=$PWD/cmdline-tools
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin
+          
+          # Create project structure
           mkdir -p app/src/main/java/com/zahra/vpsmonitor
           
           cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
@@ -33,8 +43,7 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:label="VPS Monitor"
-                  android:theme="@android:style/Theme.NoTitleBar"
-                  android:usesCleartextTraffic="true">
+                  android:theme="@android:style/Theme.NoTitleBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -81,9 +90,9 @@ jobs:
           GRADLE
           
           echo "include ':app'" > settings.gradle
-      
-      - name: Build APK
-        run: gradle assembleDebug
+          
+          # Build
+          gradle assembleDebug
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
