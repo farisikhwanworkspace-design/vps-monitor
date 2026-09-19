@@ -12,38 +12,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up JDK 11
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
       
-      - name: Build simple APK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          build-tools: 34.0.0
+      
+      - name: Create Android Project
         run: |
-          # Install Android SDK command line tools
-          sudo apt-get update -qq
-          sudo apt-get install -qq -y wget unzip
-          
-          # Download command line tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-9477386_latest.zip
-          
-          # Setup SDK
-          export ANDROID_HOME=$PWD/cmdline-tools
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin
-          
-          # Create project structure
           mkdir -p app/src/main/java/com/zahra/vpsmonitor
           
-          cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
+          cat > app/src/main/AndroidManifest.xml << 'EOFMANIFEST'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.zahra.vpsmonitor">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
               <application
                   android:allowBackup="true"
                   android:label="VPS Monitor"
-                  android:theme="@android:style/Theme.NoTitleBar">
+                  android:theme="@android:style/Theme.NoTitleBar"
+                  android:usesCleartextTraffic="true">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -52,31 +45,29 @@ jobs:
                   </activity>
               </application>
           </manifest>
-          MANIFEST
+          EOFMANIFEST
           
-          cat > app/src/main/java/com/zahra/vpsmonitor/MainActivity.java << 'JAVA'
+          cat > app/src/main/java/com/zahra/vpsmonitor/MainActivity.java << 'EOFJAVA'
           package com.zahra.vpsmonitor;
           import android.app.Activity;
           import android.os.Bundle;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
-          
           public class MainActivity extends Activity {
-              private WebView webView;
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  webView = new WebView(this);
-                  setContentView(webView);
-                  webView.getSettings().setJavaScriptEnabled(true);
-                  webView.setWebViewClient(new WebViewClient());
-                  webView.loadUrl("https://farisikhwanworkspace-design.github.io/vps-monitor/");
+                  WebView w = new WebView(this);
+                  setContentView(w);
+                  w.getSettings().setJavaScriptEnabled(true);
+                  w.setWebViewClient(new WebViewClient());
+                  w.loadUrl("https://farisikhwanworkspace-design.github.io/vps-monitor/");
               }
           }
-          JAVA
+          EOFJAVA
           
-          cat > app/build.gradle << 'GRADLE'
-          plugins { id 'com.android.application' }
+          cat > app/build.gradle << 'EOFGRADLE'
+          apply plugin: 'com.android.application'
           android {
               compileSdk 34
               defaultConfig {
@@ -87,16 +78,17 @@ jobs:
                   versionName "1.0"
               }
           }
-          GRADLE
+          EOFGRADLE
           
           echo "include ':app'" > settings.gradle
-          
-          # Build
-          gradle assembleDebug
+      
+      - name: Build APK
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          gradle assembleDebug || ./gradlew assembleDebug
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: vps-monitor-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
