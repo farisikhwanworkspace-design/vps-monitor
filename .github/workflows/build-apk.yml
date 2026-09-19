@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -20,15 +20,12 @@ jobs:
       
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools: 34.0.0
       
-      - name: Create Android Project
+      - name: Create Android Project Structure
         run: |
           mkdir -p app/src/main/java/com/zahra/vpsmonitor
           
-          cat > app/src/main/AndroidManifest.xml << 'EOFMANIFEST'
+          cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -45,14 +42,15 @@ jobs:
                   </activity>
               </application>
           </manifest>
-          EOFMANIFEST
+          MANIFEST
           
-          cat > app/src/main/java/com/zahra/vpsmonitor/MainActivity.java << 'EOFJAVA'
+          cat > app/src/main/java/com/zahra/vpsmonitor/MainActivity.java << 'JAVA'
           package com.zahra.vpsmonitor;
           import android.app.Activity;
           import android.os.Bundle;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          
           public class MainActivity extends Activity {
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -64,12 +62,34 @@ jobs:
                   w.loadUrl("https://farisikhwanworkspace-design.github.io/vps-monitor/");
               }
           }
-          EOFJAVA
+          JAVA
+      
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      
+      - name: Build with Gradle
+        run: |
+          # Create root build.gradle
+          cat > build.gradle << 'GRADLE'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.2.0'
+              }
+          }
+          GRADLE
           
-          cat > app/build.gradle << 'EOFGRADLE'
+          # Create app/build.gradle
+          cat > app/build.gradle << 'APPGRADLE'
           apply plugin: 'com.android.application'
+          
           android {
+              namespace 'com.zahra.vpsmonitor'
               compileSdk 34
+              
               defaultConfig {
                   applicationId "com.zahra.vpsmonitor"
                   minSdk 24
@@ -77,18 +97,50 @@ jobs:
                   versionCode 1
                   versionName "1.0"
               }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
           }
-          EOFGRADLE
+          APPGRADLE
           
-          echo "include ':app'" > settings.gradle
+          # Create settings.gradle
+          cat > settings.gradle << 'SETTINGS'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "VPSMonitor"
+          include ':app'
+          SETTINGS
+          
+          # Create gradle.properties
+          cat > gradle.properties << 'PROPS'
+          android.useAndroidX=false
+          org.gradle.jvmargs=-Xmx2048m
+          PROPS
+          
+          # Create gradle wrapper
+          gradle wrapper --gradle-version 8.2
+          
+          # Build
+          ./gradlew assembleDebug
       
-      - name: Build APK
-        run: |
-          chmod +x gradlew 2>/dev/null || true
-          gradle assembleDebug || ./gradlew assembleDebug
-      
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: vps-monitor-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
