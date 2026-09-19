@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VPS Monitor</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 400px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        .header h1 { font-size: 24px; margin-bottom: 5px; }
+        .header .time { color: #888; font-size: 14px; }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .stat-label { color: #aaa; }
+        .stat-value { font-weight: 600; }
+        .bar-container {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .bar-cpu { background: linear-gradient(90deg, #4ade80, #22c55e); }
+        .bar-ram { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+        .bar-disk { background: linear-gradient(90deg, #f472b6, #ec4899); }
+        .service-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .service-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+        .status-dot.off { background: #ef4444; }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .btn {
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+        .error { color: #ef4444; text-align: center; padding: 20px; }
+        .network { font-size: 13px; color: #60a5fa; }
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #22c55e;
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖥️ VPS Monitor</h1>
+            <div class="time" id="time">Loading...</div>
+        </div>
+        
+        <div id="content">
+            <div class="loading">⏳ Memuatkan data...</div>
+        </div>
+        
+        <div class="btn-grid">
+            <button class="btn btn-primary" onclick="refresh()">🔄 Refresh</button>
+            <button class="btn btn-danger" onclick="cleanRam()">🧹 Clean RAM</button>
+            <button class="btn btn-success" onclick="cleanStorage()">🗑️ Clean Storage</button>
+            <button class="btn btn-secondary" onclick="showProcs()">📊 Proses</button>
+        </div>
+    </div>
+    
+    <div id="toast"></div>
+    
+    <script>
+        const API = '';  // Same origin
+        
+        async function fetchJSON(url) {
+            const res = await fetch(API + url);
+            return res.json();
+        }
+        
+        function fmtBytes(bytes) {
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+            return bytes.toFixed(1) + units[i];
+        }
+        
+        function bar(pct) {
+            return `<div class="bar-container"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+        }
+        
+        async function loadDashboard() {
+            try {
+                const [cpu, ram, disk, net] = await Promise.all([
+                    fetchJSON('/api/cpu'),
+                    fetchJSON('/api/ram'),
+                    fetchJSON('/api/disk'),
+                    fetchJSON('/api/net')
+                ]);
+                
+                const services = await fetchJSON('/api/services');
+                
+                document.getElementById('time').textContent = new Date().toLocaleString('ms-MY');
+                
+                let html = `
+                    <div class="card">
+                        <div class="card-title">⚡ CPU</div>
+                        <div class="stat-row">
+                            <span class="stat-label">Usage</span>
+                            <span class="stat-value">${cpu.pct.toFixed(1)}%</span>
+                        </div>
+                        ${bar(cpu.pct)}
+                        <div class="stat-row" style="margin-top:8px">
+                            <span class="stat-label">Cores</span>
+                            <span class="stat-value">${cpu.cores}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">🧠 RAM</div>
+                        <div class="stat-row">
+                            <span class="stat-label">Used</span>
+                            <span class="stat-value">${fmtBytes(ram.used)} / ${fmtBytes(ram.total)}</span>
+                        </div>
+                        ${bar(ram.pct)}
+                        <div class="stat-row" style="margin-top:8px">
+                            <span class="stat-label">Cache</span>
+                            <span class="stat-value">${fmtBytes(ram.cache)}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">💾 Disk</div>
+                        <div class="stat-row">
+                            <span class="stat-label">Used</span>
+                            <span class="stat-value">${fmtBytes(disk.used)} / ${fmtBytes(disk.total)}</span>
+                        </div>
+                        ${bar(disk.pct)}
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">🌐 Network</div>
+                        <div class="stat-row network">
+                            <span>↓ ${fmtBytes(net.rx_rate)}/s</span>
+                            <span>↑ ${fmtBytes(net.tx_rate)}/s</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">🔌 Services</div>
+                        <div class="service-grid">
+                `;
+                
+                for (const [name, alive] of Object.entries(services)) {
+                    html += `
+                        <div class="service-item">
+                            <div class="status-dot ${alive ? '' : 'off'}"></div>
+                            <span>${name}</span>
+                        </div>
+                    `;
+                }
+                
+                html += '</div></div>';
+                document.getElementById('content').innerHTML = html;
+                
+            } catch (e) {
+                document.getElementById('content').innerHTML = `<div class="error">❌ Gagal muatkan data: ${e.message}</div>`;
+            }
+        }
+        
+        async function cleanRam() {
+            showToast('🧹 Cleaning RAM...');
+            try {
+                const res = await fetch(API + '/api/clean/ram', { method: 'POST' });
+                const data = await res.json();
+                showToast(`✅ Killed ${data.killed} processes`);
+                refresh();
+            } catch (e) {
+                showToast('❌ Gagal clean RAM');
+            }
+        }
+        
+        async function cleanStorage() {
+            showToast('🗑️ Cleaning storage...');
+            try {
+                const res = await fetch(API + '/api/clean/storage', { method: 'POST' });
+                const data = await res.json();
+                showToast(`✅ Freed ${data.freed}`);
+                refresh();
+            } catch (e) {
+                showToast('❌ Gagal clean storage');
+            }
+        }
+        
+        function showProcs() {
+            window.location.href = '/api/procs';
+        }
+        
+        function refresh() {
+            document.getElementById('content').innerHTML = '<div class="loading">⏳ Memuatkan...</div>';
+            loadDashboard();
+        }
+        
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3000);
+        }
+        
+        // Auto refresh every 30s
+        loadDashboard();
+        setInterval(loadDashboard, 30000);
+        
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
