@@ -1,0 +1,103 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Create Android project
+        run: |
+          mkdir -p app/src/main/java/com/zahra/vpsmonitor
+          mkdir -p app/src/main/res/values
+          
+          cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.zahra.vpsmonitor">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:allowBackup="true"
+                  android:label="VPS Monitor"
+                  android:theme="@android:style/Theme.NoTitleBar"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          MANIFEST
+          
+          cat > app/src/main/java/com/zahra/vpsmonitor/MainActivity.java << 'JAVA'
+          package com.zahra.vpsmonitor;
+          
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          
+          public class MainActivity extends Activity {
+              private WebView webView;
+              
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  webView = new WebView(this);
+                  setContentView(webView);
+                  webView.getSettings().setJavaScriptEnabled(true);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.loadUrl("https://farisikhwanworkspace-design.github.io/vps-monitor/");
+              }
+          }
+          JAVA
+          
+          cat > app/build.gradle << 'GRADLE'
+          plugins {
+              id 'com.android.application'
+          }
+          
+          android {
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.zahra.vpsmonitor"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          GRADLE
+          
+          echo "include ':app'" > settings.gradle
+      
+      - name: Build APK
+        run: |
+          gradle assembleDebug
+      
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vps-monitor-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
